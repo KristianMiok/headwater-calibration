@@ -54,6 +54,11 @@ class LocalIDResult:
         Neighbourhood size used for local fits.
     n_points : int
         Number of points the estimates were computed on.
+    nan_mask : ndarray, shape (n_points,) or None
+        True for rows that had at least one NaN in the input X and were
+        median-imputed before nearest-neighbour search. Useful to check
+        whether imputed (e.g. headwater) rows behave differently from
+        non-imputed rows in downstream analysis.
     """
 
     id_values: np.ndarray
@@ -61,18 +66,51 @@ class LocalIDResult:
     method: str
     k: int
     n_points: int
+    nan_mask: np.ndarray | None = None
 
 
 def standardise(X: np.ndarray) -> np.ndarray:
     """Z-score standardise features. ID estimates are scale-sensitive.
 
+    Uses nanmean/nanstd so columns with NaN entries still produce sensible
+    standardisations. Caller is responsible for imputing NaN before fitting
+    a NearestNeighbors index — see impute_median().
+
     Returns a copy; does not modify X in place.
     """
     X = np.asarray(X, dtype=float)
-    mu = X.mean(axis=0, keepdims=True)
-    sd = X.std(axis=0, keepdims=True)
+    mu = np.nanmean(X, axis=0, keepdims=True)
+    sd = np.nanstd(X, axis=0, keepdims=True)
     sd = np.where(sd < 1e-12, 1.0, sd)
     return (X - mu) / sd
+
+
+def impute_median(X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Impute NaN cells with column medians.
+
+    Returns
+    -------
+    X_imputed : ndarray, shape (n, d)
+        Copy of X with NaN cells replaced by column medians.
+    nan_mask : ndarray, shape (n,)
+        Boolean: True for rows that originally had at least one NaN.
+        Useful as a covariate in downstream analyses to check whether
+        imputed rows behave differently.
+    """
+    X = np.asarray(X, dtype=float)
+    nan_mask = np.isnan(X).any(axis=1)
+    if not nan_mask.any():
+        return X.copy(), nan_mask
+    medians = np.nanmedian(X, axis=0)
+    # Replace any all-NaN columns (medians is NaN there) with 0 — they carry
+    # no information anyway and dropping them would change the column count.
+    medians = np.where(np.isnan(medians), 0.0, medians)
+    X_out = X.copy()
+    nan_cells = np.isnan(X_out)
+    # Broadcast medians across rows
+    col_idx = np.where(nan_cells)
+    X_out[col_idx] = medians[col_idx[1]]
+    return X_out, nan_mask
 
 
 def _twonn_local(distances_2: np.ndarray) -> float:
@@ -177,6 +215,11 @@ def estimate_local_id(
     if standardise_X:
         X = standardise(X)
 
+    # Median-impute any NaN cells. Required because NearestNeighbors does
+    # not accept NaN. The returned nan_mask is currently unused but kept on
+    # the result object so callers can audit which rows were imputed.
+    X, nan_mask = impute_median(X)
+
     # Build a single global k-NN index, then for each point compute
     # local TwoNN on its k neighbours. We need k+1 neighbours because
     # the first is the point itself.
@@ -221,6 +264,7 @@ def estimate_local_id(
         method=method,
         k=k,
         n_points=n,
+        nan_mask=nan_mask,
     )
 
 

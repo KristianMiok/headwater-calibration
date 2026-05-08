@@ -41,7 +41,7 @@ from sdm_geometry import analysis, calibration, id_estimation, io  # noqa: E402
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--entity", required=True, help="species/entity name (e.g. torrentium)")
-    p.add_argument("--algorithm", default="rf", choices=["rf", "xgb"])
+    p.add_argument("--algorithm", default="random_forest", choices=["random_forest", "xgboost"])
     p.add_argument(
         "--track", default="full",
         help="predictor track (e.g. full, upstream_only)",
