@@ -1,89 +1,115 @@
-# sdm-geometry
+# headwater-calibration
 
-Geometric perspectives on calibration risk in species distribution models.
+Where ensemble species distribution models lose calibration under occurrence-data
+contamination — and how group-conditional conformal prediction restores it.
 
-This project investigates whether the local intrinsic dimension of the environmental feature space predicts where calibration of ensemble SDM prediction intervals will fail. The hypothesis: regions of high local intrinsic dimension correspond to regions where ensemble variance underestimates true uncertainty, even after standard contamination-robust calibration.
+This repository accompanies Miok & Pârvulescu (in prep.). It shows that when ensemble
+SDMs are trained on data contaminated with low-accuracy occurrence records, the
+resulting prediction intervals fail to cover the truth **specifically at stream-network
+headwaters** — the topological tops of the network, where upstream-aggregated
+environmental predictors are structurally undefined. The failure is driven by upward
+prediction bias that ensemble variance does not detect, it scales with contamination
+severity, and it replicates across four freshwater crayfish species and two ensemble
+algorithms (random forest, XGBoost).
 
-The work builds on the panel of calibration results from the companion `trustworthy-sdm` project (Miok et al., in prep) and uses intrinsic-dimension estimators from DADApy (Glielmo et al. 2022).
+Standard leave-one-basin-out (LOBO) split conformal calibration — the panel-wide remedy
+from the companion `trustworthy-sdm` project (Pârvulescu et al., in prep.) — restores
+marginal coverage but leaves headwaters systematically undercovered. A group-conditional
+(**Mondrian**) variant, calibrating headwater and non-headwater segments separately,
+restores reliable coverage in both simultaneously at no additional computational cost,
+and reallocates interval width toward the segments that need it.
+
+A local-intrinsic-dimension analysis (TwoNN; Facco et al. 2017) — originally the
+project's central hypothesis — is retained only as a supplementary within-headwater
+robustness check.
 
 ## Status
 
-**Pilot phase.** Currently testing whether the core hypothesis — local intrinsic dimension correlates with per-pixel calibration error — holds on a single species before scaling to the full 8-entity panel.
+Manuscript complete; in preparation for submission to *Ecography*. The committed scripts
+reproduce the figures and the sparsity-control robustness analysis; panel diagnostic
+outputs are in `results/tables/`.
 
 ## Repository layout
 
-```
-sdm-geometry/
-├── pyproject.toml              # package config and dependencies
+\`\`\`
+headwater-calibration/
+├── pyproject.toml
 ├── README.md
-├── .gitignore
-├── src/sdm_geometry/
-│   ├── __init__.py
-│   ├── io.py                   # data loading from trustworthy-sdm outputs
-│   ├── id_estimation.py        # DADApy wrappers for local ID estimation
-│   ├── calibration.py          # per-pixel calibration error computation
-│   ├── analysis.py             # correlation, partial correlation, plotting
-│   └── synth.py                # synthetic SDM-like data generator (for testing)
+├── src/sdm_geometry/            # package name retained from the project's origin
+│   ├── io.py                    # load extracted per-cell surfaces
+│   ├── id_estimation.py         # local intrinsic dimension + density (TwoNN)
+│   ├── calibration.py           # per-pixel calibration error, coverage, width
+│   ├── analysis.py              # correlation / partial correlation / plotting
+│   └── synth.py                 # synthetic generator for the smoke test
 ├── scripts/
-│   ├── 01_pilot_synthetic.py   # smoke test with synthetic data (no real data needed)
-│   ├── 02_pilot_single_species.py  # the actual pilot on one species
-│   └── run_on_vega.sbatch      # SLURM script for full-panel scaling
-├── notebooks/
-│   └── pilot_exploration.ipynb # interactive exploration
-├── tests/
-│   └── test_id_estimation.py
-├── data/
-│   ├── raw/                    # gitignored: copied from trustworthy-sdm
-│   └── processed/              # gitignored: ID estimates, correlations
+│   ├── extract_from_trustworthy_sdm.py   # pull one cell's surfaces from the companion pipeline
+│   ├── make_paper_figures.py             # Figure 1 (coverage), Figure 3 (width inflation)
+│   ├── make_paper_figures_2_4.py         # Figure 2 (bias), Figure S1 (intrinsic dimension)
+│   ├── robustness_density_control.py     # feature-space sparsity control for the headwater effect
+│   ├── 01_pilot_synthetic.py             # end-to-end smoke test (no real data needed)
+│   ├── 02_pilot_single_species.py        # single-cell pilot
+│   └── run_pilot_vega.sbatch             # SLURM script for HPC runs
+├── manuscript/                  # manuscript draft, tables, and figure legends
 ├── results/
-│   ├── figures/
-│   └── tables/
-└── docs/
-    └── pilot_design.md         # what the pilot tests and why
-```
+│   ├── figures/                 # generated figures (gitignored)
+│   └── tables/                  # diagnostic and panel tables
+├── tests/
+├── docs/
+└── data/raw/                    # gitignored: surfaces extracted from trustworthy-sdm
+\`\`\`
 
 ## Installation
 
-Tested on Python 3.12.
+Tested on Python 3.12, managed with [uv](https://docs.astral.sh/uv/).
 
-```bash
-cd sdm-geometry
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -e ".[dev]"
-```
+\`\`\`bash
+cd headwater-calibration
+uv venv --python 3.12
+uv sync
+\`\`\`
 
 Verify:
 
-```bash
-python -c "import dadapy; print('DADApy', dadapy.__version__)"
-python -c "from sdm_geometry import id_estimation; print('package OK')"
-```
+\`\`\`bash
+uv run python -c "from sdm_geometry import calibration; print('package OK')"
+\`\`\`
 
-## Quick start — synthetic pilot
+## Quick start — synthetic smoke test
 
-Before plugging in real data, verify the toolchain works:
+Before touching real data, verify the pipeline end-to-end on a constructed dataset with
+known structure:
 
-```bash
-python scripts/01_pilot_synthetic.py
-```
+\`\`\`bash
+uv run python scripts/01_pilot_synthetic.py
+\`\`\`
 
-This generates a synthetic dataset with a known geometric structure, runs the full pilot pipeline (local ID estimation, calibration error simulation, correlation analysis), and produces a figure in `results/figures/synthetic_pilot.png`. If this runs end-to-end, the toolchain is healthy and you can move to real data.
+## Reproducing the analysis
 
-## Real-data pilot
+The analysis runs on per-cell prediction surfaces (30 ensemble replicates plus a clean
+deterministic benchmark) extracted from the companion `trustworthy-sdm` pipeline. After
+extracting the four headwater-bearing entities into `data/raw/`
+(see `scripts/extract_from_trustworthy_sdm.py`):
 
-After copying single-species Paper 5 outputs into `data/raw/` (see `docs/pilot_design.md`):
+\`\`\`bash
+# main figures
+uv run python scripts/make_paper_figures.py
+uv run python scripts/make_paper_figures_2_4.py
 
-```bash
-python scripts/02_pilot_single_species.py --species torrentium --algorithm rf --track full
-```
+# sparsity-control robustness for the headwater effect
+uv run python scripts/robustness_density_control.py
+\`\`\`
 
-Output: correlation table in `results/tables/`, scatter plot in `results/figures/`.
+Panel diagnostic tables (contamination response, bias/width decomposition, standard vs
+Mondrian conformal coverage and width) are written to `results/tables/`, e.g.
+`panel_contamination_x_headwater.csv`, `panel_mondrian.csv`, `panel_mondrian_xgboost.csv`,
+and `robustness_density_control.csv`.
 
-## Data
+## Data availability
 
-The `data/` directory is gitignored. Real data is copied locally from `trustworthy-sdm` outputs for development; full-panel runs happen on VEGA.
+The `data/` directory is gitignored. Prediction surfaces are extracted locally from the
+companion `trustworthy-sdm` outputs; the underlying crayfish occurrences are from the
+curated World of Crayfish® database, and environmental predictors from Hydrography90m and
+GeoFRESH. See the manuscript's data-availability statement for full details.
 
 ## License
 
