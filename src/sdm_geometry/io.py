@@ -24,7 +24,7 @@ data/raw/
     basin_lookup.parquet          # subc_id -> basin_id (for LOBO, optional)
 
 This is a deliberately narrow interface for the pilot. When we scale
-to the full panel on VEGA, the loader can be extended to read directly
+to the full panel, the loader can be extended to read directly
 from the trustworthy-sdm output structure.
 """
 

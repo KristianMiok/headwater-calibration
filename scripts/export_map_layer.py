@@ -1,13 +1,12 @@
-"""Export per-segment map layer for Lucian/Antonio's spatial figure.
+"""Export per-segment map layer for the spatial figure.
 One CSV per species (Random Forest, Protocol A, 20% contamination), one row per
-stream segment, keyed by the RAW Hydrography90m subc_id.
-Run from headwater-calibration root: uv run python scripts/export_map_layer.py"""
+stream segment, keyed by the raw Hydrography90m subc_id.
+Run from project root: python scripts/export_map_layer.py"""
 import sys
 sys.path.insert(0, "src")
-sys.path.insert(0, "/Users/kristianmiok/Desktop/Papers/trustworthy-sdm/src")
 import numpy as np
 import pandas as pd
-from trustworthy_sdm.conformal import nonconformity_scores, conformal_quantile
+from sdm_geometry.conformal import nonconformity_scores, conformal_quantile
 
 ALPHA, ALGO, LEVEL = 0.05, "random_forest", 20
 SPECIES = ["Austropotamobius_torrentium_pooled", "Pacifastacus_leniusculus_alien"]
@@ -26,8 +25,6 @@ for entity in SPECIES:
     ens_mean = reps.mean(axis=0)
 
     bias = ens_mean - benchmark
-    # signed distance from benchmark to nearest interval edge (pre-correction):
-    #   >0 benchmark above upper edge, <0 below lower edge, 0 inside
     miscal_distance = np.where(benchmark > q_hi, benchmark - q_hi,
                        np.where(benchmark < q_lo, benchmark - q_lo, 0.0))
     covered_before = ((benchmark >= q_lo) & (benchmark <= q_hi)).astype(int)
@@ -59,12 +56,7 @@ for entity in SPECIES:
         "covered_before": covered_before, "covered_stdLOBO": covered_stdLOBO,
         "covered_mondrian": covered_mondrian, "basin": basin_id,
     })
-    n_uncal = int(np.isnan(q_lo_m).sum())
     outpath = f"results/tables/map_layer_{entity}_{ALGO}_L{LEVEL}.csv"
     out.to_csv(outpath, index=False)
-    print(f"\n{entity}: wrote {len(out)} rows -> {outpath}")
-    print(f"  subc_id range: {subc_id.min()} .. {subc_id.max()}")
-    print(f"    (MUST be large scattered Hydrography90m IDs, NOT 0..{len(out)-1} -- if 0..N the join breaks silently)")
-    print(f"  headwater: {is_hw.sum()} ({100*is_hw.mean():.1f}%)   basins: {len(np.unique(basin_id[valid]))}")
-    print(f"  uncalibrated pixels (tiny basins, covered=0): {n_uncal}")
-    print(f"  HW coverage before/LOBO/Mondrian: {covered_before[is_hw].mean():.3f} / {covered_stdLOBO[is_hw].mean():.3f} / {covered_mondrian[is_hw].mean():.3f}")
+    print(f"{entity}: wrote {len(out)} rows -> {outpath}")
+    print(f"  subc_id range: {subc_id.min()} .. {subc_id.max()}  headwater {is_hw.sum()} ({100*is_hw.mean():.1f}%)")
